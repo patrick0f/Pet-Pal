@@ -103,6 +103,12 @@ def generate_ai_message(mood, hunger, energy, happiness, recent_action=None):
         }
         return fallback_messages.get(mood, "Hello! :)")
 
+# Game restart function
+def restart_game():
+    global pet, current_state
+    pet = Pet()  # Create new pet with fresh stats
+    current_state = LANDING  # Go back to landing page
+
 # Pet instance
 pet = Pet()
 
@@ -213,6 +219,14 @@ def draw_congratulations_popup():
         for star_x, star_y in star_positions:
             star_rect = star_img.get_rect(center=(star_x, star_y))
             screen.blit(star_img, star_rect)
+        
+        # Draw Play Again button
+        pygame.draw.rect(screen, (100, 200, 100), play_again_button_rect)  # Green button
+        pygame.draw.rect(screen, (255, 255, 255), play_again_button_rect, 3)  # White border
+        
+        play_again_text = button_font.render("PLAY AGAIN", True, (255, 255, 255))
+        play_again_text_rect = play_again_text.get_rect(center=play_again_button_rect.center)
+        screen.blit(play_again_text, play_again_text_rect)
 
 # Button properties
 button_width = 200
@@ -237,6 +251,13 @@ sleep_button_y = play_button_y + action_button_spacing
 feed_button_rect = pygame.Rect(action_button_x, feed_button_y, 100, 100)
 action_play_button_rect = pygame.Rect(action_button_x, play_button_y, 100, 100)
 sleep_button_rect = pygame.Rect(action_button_x, sleep_button_y, 100, 100)
+
+# Play Again button for congratulations popup
+play_again_button_width = 280  # Increased from 200
+play_again_button_height = 80  # Increased from 60
+play_again_button_x = (WIDTH - play_again_button_width) // 2
+play_again_button_y = (HEIGHT // 2) + 160  # Moved down from +120 to +160
+play_again_button_rect = pygame.Rect(play_again_button_x, play_again_button_y, play_again_button_width, play_again_button_height)
 
 def draw_landing_page():
     screen.blit(landing_background, (0, 0))
@@ -351,18 +372,23 @@ while running:
             elif current_state == TUTORIAL and start_game_button_rect.collidepoint(event.pos):
                 current_state = GAME
             elif current_state == GAME:
-                # Check action button clicks
-                if feed_button_rect.collidepoint(event.pos):
-                    pet.feed()
-                    pet.show_action_response("fed", generate_ai_message)
-                elif action_play_button_rect.collidepoint(event.pos):
-                    pet.play()
-                    pet.show_action_response("played", generate_ai_message)
-                elif sleep_button_rect.collidepoint(event.pos):
-                    pet.sleep()
-                    pet.show_action_response("slept", generate_ai_message)
+                # Check for Play Again button click (during congratulations popup)
+                if pet.congrats_popup_timer > 0 and play_again_button_rect.collidepoint(event.pos):
+                    restart_game()
+                # Check action button clicks (only if no popup is showing)
+                elif pet.congrats_popup_timer == 0:
+                    if feed_button_rect.collidepoint(event.pos):
+                        pet.feed()
+                        pet.show_action_response("fed", generate_ai_message)
+                    elif action_play_button_rect.collidepoint(event.pos):
+                        pet.play()
+                        pet.show_action_response("played", generate_ai_message)
+                    elif sleep_button_rect.collidepoint(event.pos):
+                        pet.sleep()
+                        pet.show_action_response("slept", generate_ai_message)
         
-        elif event.type == pygame.KEYDOWN and current_state == GAME:
+        elif event.type == pygame.KEYDOWN and current_state == GAME and pet.congrats_popup_timer == 0:
+            # Only allow keyboard controls when popup is not showing
             if event.key == pygame.K_f:
                 pet.feed()
                 pet.show_action_response("fed", generate_ai_message)

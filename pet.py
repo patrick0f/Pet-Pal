@@ -40,11 +40,9 @@ class Pet:
         # Check for max friendship achievement
         if self.happiness >= 100 and not self.max_friendship_achieved:
             self.max_friendship_achieved = True
-            self.congrats_popup_timer = 300  # Show for 5 seconds at 60 FPS
+            self.congrats_popup_timer = 1  # Set to 1 to show popup, won't auto-decrease
         
-        # Decrease congratulations popup timer
-        if self.congrats_popup_timer > 0:
-            self.congrats_popup_timer -= 1
+        # Don't decrease congratulations popup timer - let it stay until user clicks Play Again
 
     def get_mood(self):
         # Priority-based mood system using all stats
