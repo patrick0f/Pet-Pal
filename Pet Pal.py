@@ -2,6 +2,14 @@ import pygame
 import os
 import sys
 from pet import Pet  # Make sure pet.py exists with a Pet class
+from dotenv import load_dotenv
+from openai import OpenAI
+
+# Load environment variables
+load_dotenv()
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # Initialize Pygame
 pygame.init()
@@ -56,6 +64,45 @@ feed_img = pygame.transform.scale(feed_img, button_size)
 play_img = pygame.transform.scale(play_img, button_size)
 sleep_img = pygame.transform.scale(sleep_img, button_size)
 
+# Load star image for congratulations popup
+star_img_path = os.path.join(ASSET_PATH, "star.png")
+star_img = pygame.image.load(star_img_path)
+star_img = pygame.transform.scale(star_img, (40, 40))  # Scale to appropriate size
+
+# AI Message Generation
+def generate_ai_message(mood, hunger, energy, happiness, recent_action=None):
+    try:
+        # Create context for the AI
+        context = f"You are a cute virtual pet. Your current stats are: Hunger: {hunger:.1f}, Energy: {energy:.1f}, Happiness: {happiness:.1f}. Your mood is: {mood}."
+        
+        if recent_action:
+            context += f" Your owner just {recent_action}."
+        
+        prompt = f"{context} Respond with a short, cute message (max 7 words) that reflects how you're feeling. Use simple, friendly language and text based emojis, like :D."
+        
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a cute virtual pet who speaks in short, adorable messages with text based emojis (e.g. :D)."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=50,
+            temperature=0.8
+        )
+        
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"AI message generation failed: {e}")
+        # Fallback to static messages
+        fallback_messages = {
+            "hungry": "I'm so hungry! :(",
+            "tired": "I need a nap...",
+            "sad": "I'm feeling lonely... :'(",
+            "excited": "This is amazing!",
+            "happy": "I'm feeling great! :DDD"
+        }
+        return fallback_messages.get(mood, "Hello! :)")
+
 # Pet instance
 pet = Pet()
 
@@ -69,11 +116,11 @@ def draw_stat(label, value, y_pos):
 
 def draw_speech_bubble(pet_x, pet_y):
     if pet.speech_bubble_timer > 0:
-        # Calculate bubble position (above the pet)
-        bubble_width = 250
-        bubble_height = 80
+        # Calculate bubble position (above the pet) - Made bigger for AI messages
+        bubble_width = 400  # Increased from 250
+        bubble_height = 120  # Increased from 80
         bubble_x = pet_x + 150 - bubble_width // 2  # Center above pet
-        bubble_y = pet_y - 100  # Position above pet
+        bubble_y = pet_y - 140  # Moved up more to accommodate larger bubble
         
         # Draw bubble background (rounded rectangle effect)
         bubble_rect = pygame.Rect(bubble_x, bubble_y, bubble_width, bubble_height)
@@ -89,10 +136,36 @@ def draw_speech_bubble(pet_x, pet_y):
         pygame.draw.polygon(screen, (255, 255, 255), tail_points)
         pygame.draw.polygon(screen, (0, 0, 0), tail_points, 3)
         
-        # Draw text inside bubble
-        bubble_text = tutorial_font.render(pet.speech_bubble_text, True, (0, 0, 0))
-        text_rect = bubble_text.get_rect(center=(bubble_x + bubble_width // 2, bubble_y + bubble_height // 2))
-        screen.blit(bubble_text, text_rect)
+        # Draw text inside bubble (with better text handling)
+        text_lines = []
+        words = pet.speech_bubble_text.split(' ')
+        current_line = ""
+        
+        # Simple word wrapping for longer AI messages
+        for word in words:
+            test_line = current_line + word + " "
+            test_surface = tutorial_font.render(test_line, True, (0, 0, 0))
+            if test_surface.get_width() > bubble_width - 20:  # Leave 20px padding
+                if current_line:
+                    text_lines.append(current_line.strip())
+                    current_line = word + " "
+                else:
+                    text_lines.append(word)
+                    current_line = ""
+            else:
+                current_line = test_line
+        
+        if current_line:
+            text_lines.append(current_line.strip())
+        
+        # Draw each line of text
+        line_height = 25
+        start_y = bubble_y + bubble_height // 2 - (len(text_lines) * line_height) // 2
+        
+        for i, line in enumerate(text_lines):
+            line_surface = tutorial_font.render(line, True, (0, 0, 0))
+            line_rect = line_surface.get_rect(center=(bubble_x + bubble_width // 2, start_y + i * line_height))
+            screen.blit(line_surface, line_rect)
 
 def draw_congratulations_popup():
     if pet.congrats_popup_timer > 0:
@@ -138,9 +211,8 @@ def draw_congratulations_popup():
         ]
         
         for star_x, star_y in star_positions:
-            star_text = button_font.render("★", True, (255, 255, 255))
-            star_rect = star_text.get_rect(center=(star_x, star_y))
-            screen.blit(star_text, star_rect)
+            star_rect = star_img.get_rect(center=(star_x, star_y))
+            screen.blit(star_img, star_rect)
 
 # Button properties
 button_width = 200
@@ -282,25 +354,32 @@ while running:
                 # Check action button clicks
                 if feed_button_rect.collidepoint(event.pos):
                     pet.feed()
+                    pet.show_action_response("fed", generate_ai_message)
                 elif action_play_button_rect.collidepoint(event.pos):
                     pet.play()
+                    pet.show_action_response("played", generate_ai_message)
                 elif sleep_button_rect.collidepoint(event.pos):
                     pet.sleep()
+                    pet.show_action_response("slept", generate_ai_message)
         
         elif event.type == pygame.KEYDOWN and current_state == GAME:
             if event.key == pygame.K_f:
                 pet.feed()
+                pet.show_action_response("fed", generate_ai_message)
             elif event.key == pygame.K_p:
                 pet.play()
+                pet.show_action_response("played", generate_ai_message)
             elif event.key == pygame.K_s:
                 pet.sleep()
+                pet.show_action_response("slept", generate_ai_message)
     
     if current_state == LANDING:
         draw_landing_page()
     elif current_state == TUTORIAL:
         draw_tutorial()
     elif current_state == GAME:
-        pet.update()
+        # Pass AI function to pet update
+        pet.update(generate_ai_message)
         draw_game()
     
     pygame.display.flip()
